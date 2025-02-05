@@ -2,7 +2,6 @@ package caskdb
 
 import (
 	"encoding/binary"
-	"fmt"
 )
 
 // format file provides encode/decode functions for serialisation and deserialisation
@@ -70,10 +69,13 @@ const headerSize = 12
 // the byte offset in the file. Whenever we insert/update a key, we create a new
 // KeyEntry object and insert that into keyDir.
 type KeyEntry struct {
+	timestamp uint32
+	position  uint32
+	totalSize uint32
 }
 
 func NewKeyEntry(timestamp uint32, position uint32, totalSize uint32) KeyEntry {
-	panic("implement me")
+	return KeyEntry{timestamp: timestamp, position: position, totalSize: totalSize}
 }
 
 func encodeHeader(timestamp uint32, keySize uint32, valueSize uint32) []byte {
@@ -84,7 +86,6 @@ func encodeHeader(timestamp uint32, keySize uint32, valueSize uint32) []byte {
 
 	binary.BigEndian.PutUint32(final_buff[8:], valueSize)
 	// write to different part of buffer by https://stackoverflow.com/a/41833364/12096319
-	fmt.Println(final_buff)
 	return final_buff
 }
 

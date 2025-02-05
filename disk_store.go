@@ -2,8 +2,10 @@ package caskdb
 
 import (
 	"errors"
-	"io/fs"
+	"fmt"
+	"io"
 	"os"
+	"time"
 )
 
 // DiskStore is a Log-Structured Hash Table as described in the BitCask paper. We
@@ -47,28 +49,98 @@ import (
 //	   	store.Set("othello", "shakespeare")
 //	   	author := store.Get("othello")
 type DiskStore struct {
-}
-
-func isFileExists(fileName string) bool {
-	// https://stackoverflow.com/a/12518877
-	if _, err := os.Stat(fileName); err == nil || errors.Is(err, fs.ErrExist) {
-		return true
-	}
-	return false
+	fileName string
+	db_map   map[string]KeyEntry
+	fileRef  *os.File
 }
 
 func NewDiskStore(fileName string) (*DiskStore, error) {
-	panic("implement me")
+	var f *os.File
+	var err error
+	f, err = os.OpenFile(fileName, os.O_CREATE|os.O_RDWR, 0644)
+	if err != nil {
+		return nil, err
+	}
+	diskstore := &DiskStore{fileName, map[string]KeyEntry{}, f}
+
+	position := 0
+	for {
+		headerBytes := make([]byte, headerSize)
+		n, err := diskstore.fileRef.ReadAt(headerBytes, int64(position))
+		if err != nil {
+			if errors.Is(err, io.EOF) && n == 0 {
+				// we do n == 0 because that means that we have actually gotten zero bytes left (and its not just EOF for some random reason)
+				break
+			}
+			return nil, err
+		}
+
+		_, keySize, valueSize := decodeHeader(headerBytes)
+		totalSize := headerSize + keySize + valueSize
+
+		recordBytes := make([]byte, totalSize)
+		_, err = diskstore.fileRef.ReadAt(recordBytes, int64(position))
+		if err != nil {
+			return nil, err
+		}
+
+		timestamp, key, _ := decodeKV(recordBytes)
+		diskstore.db_map[key] = NewKeyEntry(timestamp, uint32(position), totalSize)
+		position += int(totalSize)
+	}
+	return diskstore, nil
 }
 
 func (d *DiskStore) Get(key string) string {
-	panic("implement me")
+	entry, exists := d.db_map[key]
+	if !exists {
+		fmt.Println("no value for", key)
+		return ""
+	}
+
+	bytes := make([]byte, entry.totalSize)
+	d.fileRef.ReadAt(bytes, int64(entry.position))
+	timestamp, newKey, value := decodeKV(bytes)
+	if newKey != key {
+		panic(errors.New("NewKey is not the same as the original key"))
+	}
+
+	if timestamp != entry.timestamp {
+		panic(errors.New("timestamps don't match"))
+	}
+
+	return value
+
 }
 
 func (d *DiskStore) Set(key string, value string) {
-	panic("implement me")
+	fileinfo, err := d.fileRef.Stat()
+	if err != nil {
+		panic(err)
+	}
+
+	position_start := uint32(fileinfo.Size())
+	curr_time := uint32(time.Now().Unix())
+	bytesCount, bytesToWrite := encodeKV(uint32(curr_time), key, value)
+	numBytesWritten, err := d.fileRef.Write(bytesToWrite)
+	if err != nil {
+		panic(err)
+	}
+
+	if numBytesWritten != bytesCount {
+		panic(errors.New("numBytesWritten is not the same as BytesCount"))
+	}
+
+	keyEntry := NewKeyEntry(uint32(curr_time), position_start, uint32(bytesCount))
+	d.db_map[key] = keyEntry
+	err = d.fileRef.Sync()
+	if err != nil {
+		panic(err)
+	}
+
 }
 
 func (d *DiskStore) Close() bool {
-	panic("implement me")
+	err := d.fileRef.Close()
+	return err == nil
 }

@@ -82,7 +82,7 @@ func TestDiskStore_Delete(t *testing.T) {
 	for key, val := range tests {
 		store.Set(key, val)
 	}
-	for key, _ := range tests {
+	for key := range tests {
 		store.Set(key, "")
 	}
 	store.Set("end", "yes")

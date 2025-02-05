@@ -1,5 +1,10 @@
 package caskdb
 
+import (
+	"encoding/binary"
+	"fmt"
+)
+
 // format file provides encode/decode functions for serialisation and deserialisation
 // operations
 //
@@ -72,17 +77,47 @@ func NewKeyEntry(timestamp uint32, position uint32, totalSize uint32) KeyEntry {
 }
 
 func encodeHeader(timestamp uint32, keySize uint32, valueSize uint32) []byte {
-	panic("implement me")
+	final_buff := make([]byte, headerSize)
+	binary.BigEndian.PutUint32(final_buff, timestamp)
+	// via https://stackoverflow.com/a/29062148/12096319
+	binary.BigEndian.PutUint32(final_buff[4:], keySize)
+
+	binary.BigEndian.PutUint32(final_buff[8:], valueSize)
+	// write to different part of buffer by https://stackoverflow.com/a/41833364/12096319
+	fmt.Println(final_buff)
+	return final_buff
 }
 
 func decodeHeader(header []byte) (uint32, uint32, uint32) {
-	panic("implement me")
+	timestamp_int := (binary.BigEndian.Uint32(header[:4]))
+	keySize_int := (binary.BigEndian.Uint32(header[4:8]))
+	valueSize_int := (binary.BigEndian.Uint32(header[8:12]))
+	// from https://stackoverflow.com/a/21851632/12096319
+
+	return timestamp_int, keySize_int, valueSize_int
+
 }
 
 func encodeKV(timestamp uint32, key string, value string) (int, []byte) {
-	panic("implement me")
+	keyBytes := []byte(key)
+	valueBytes := []byte(value)
+	var keyByteslen = uint32(len(keyBytes))
+	var valueByteslen = uint32(len(valueBytes))
+	headerBytes := encodeHeader(timestamp, keyByteslen, valueByteslen)
+	headerBytes = append(headerBytes, keyBytes...)
+	headerBytes = append(headerBytes, valueBytes...)
+	return len(headerBytes), headerBytes
+
 }
 
 func decodeKV(data []byte) (uint32, string, string) {
-	panic("implement me")
+	headerBytes := data[:headerSize]
+	timestamp, keySize, valueSize := decodeHeader(headerBytes)
+	keyEnd := headerSize + keySize
+	valueEnd := keyEnd + valueSize
+	keyString := string(data[headerSize:keyEnd])
+	valueString := string(data[keyEnd:valueEnd])
+	return timestamp, keyString, valueString
+	// from https://stackoverflow.com/a/40673073/12096319
+
 }
